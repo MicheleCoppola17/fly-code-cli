@@ -37,5 +37,5 @@ def get_files_info(working_directory, directory="."):
     
     except Exception as e:
         # Return generic error string prefixed with "Error:"
-        return f'Error {e}'
+        return f'Error: {e}'
     
