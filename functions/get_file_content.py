@@ -1,4 +1,5 @@
 import os
+from google.genai import types
 from config import MAX_READ_CHARS
 
 def get_file_content(working_directory, file_path):
@@ -28,3 +29,19 @@ def get_file_content(working_directory, file_path):
         return content
     except Exception as e:
         return f'Error: {e}'
+    
+# This tells the LLM how the function should be called
+schema_get_file_content = types.FunctionDeclaration(
+    name="get_file_content",
+    description="Reads and returns the content of a specified file, relative to the working directory, up to a maximum number of characters; truncation is indicated if the file is longer.",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "file_path": types.Schema(
+                type=types.Type.STRING,
+                description="Path to the file to read, relative to the working directory",
+            ),
+        },
+        required=["file_path"],
+    ),
+)
