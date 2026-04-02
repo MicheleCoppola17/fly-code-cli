@@ -1,5 +1,6 @@
 import os
 import argparse
+import sys
 
 from dotenv import load_dotenv
 from google import genai
@@ -35,58 +36,70 @@ def main():
     
 
 def generate_content(client, messages, verbose):
-    # Get response from Gemini after giving a text prompt
-    response = client.models.generate_content(
-        model='gemini-2.5-flash', 
-        contents=messages,
-        config=types.GenerateContentConfig(
-            tools=[available_functions],
-            system_instruction=system_prompt
-            )
-    )
+    # 1. Wrap the entirety of your model-calling logic in a loop
+    for _ in range(20):
+        # Get response from Gemini after giving a text prompt
+        response = client.models.generate_content(
+            model='gemini-2.5-flash', 
+            contents=messages,
+            config=types.GenerateContentConfig(
+                tools=[available_functions],
+                system_instruction=system_prompt
+                )
+        )
 
-    # Get usage metadata (input and output tokens)
-    if not response.usage_metadata:
-        raise RuntimeError("failed to send Gemini API request.")
-    # If user adds --verbose as args
-    if verbose:
-        print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-        print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
-
-    if not response.function_calls:
-        print("Response:")
-        print(response.text)
-        return
-    
-    # List to hold function result parts
-    function_response_parts = []
-
-    for function_call in response.function_calls:
-        function_call_result = call_function(function_call, verbose=verbose)
-
-        # 1. Check that .parts exists and is non‑empty
-        if not function_call_result.parts:
-            raise RuntimeError("function_call_result.parts is empty")
-        
-        # 2. Get the first part and check .function_response
-        part = function_call_result.parts[0]
-        if not part.function_response:
-            raise RuntimeError("function_response is None")
-        
-        # 3. Check .response inside the FunctionResponse
-        resp_dict = part.function_response.response
-        if resp_dict is None:
-            raise RuntimeError("function_response.response is None")
-        
-        # 4. Append the part to the list of function results
-        function_response_parts.append(part)
-
-        # 5. Print the result in verbose mode
+        # Get usage metadata (input and output tokens)
+        if not response.usage_metadata:
+            raise RuntimeError("failed to send Gemini API request.")
+        # If user adds --verbose as args
         if verbose:
-            print(f"-> {resp_dict}")
+            print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
+            print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
 
+        # 2. Add all "candidates" to the conversation history
+        if response.candidates:
+            for candidate in response.candidates:
+                messages.append(candidate.content)
 
+        # 4. The loop ends when the model doesn't request any more function calls
+        if not response.function_calls:
+            print("Final response:")
+            print(response.text)
+            return
+        
+        # List to hold function result parts
+        function_response_parts = []
 
+        for function_call in response.function_calls:
+            function_call_result = call_function(function_call, verbose=verbose)
+
+            # 1. Check that .parts exists and is non‑empty
+            if not function_call_result.parts:
+                raise RuntimeError("function_call_result.parts is empty")
+            
+            # 2. Get the first part and check .function_response
+            part = function_call_result.parts[0]
+            if not part.function_response:
+                raise RuntimeError("function_response is None")
+            
+            # 3. Check .response inside the FunctionResponse
+            resp_dict = part.function_response.response
+            if resp_dict is None:
+                raise RuntimeError("function_response.response is None")
+            
+            # 4. Append the part to the list of function results
+            function_response_parts.append(part)
+
+            # 5. Print the result in verbose mode
+            if verbose:
+                print(f"-> {resp_dict}")
+                
+        # 3. Append the collected tool responses to the messages list
+        messages.append(types.Content(role="user", parts=function_response_parts))
+
+    # 5. If the maximum number of iterations is reached without a final response
+    print("\nError: Agent failed to complete the task and has spun its wheels for 20 iterations. Exiting.")
+    sys.exit(1)
 
 if __name__ == "__main__":
     main()
